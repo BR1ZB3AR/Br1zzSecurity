@@ -1,0 +1,35 @@
+{
+  "meta": {
+    "name": "Br1zz built-in signature database",
+    "version": 1,
+    "updated": "2026-08-11T00:00:00Z",
+    "note": "Seed database. Exact-hash signatures only - add your own with 'br1zz sig add', or import a third-party hash feed into ~/.local/share/br1zz/signatures.json."
+  },
+  "signatures": {
+    "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f": {
+      "name": "EICAR-Test-File",
+      "severity": 100,
+      "description": "EICAR standard anti-malware test file. Harmless by design; used to verify that a scanner is working."
+    },
+    "3395856ce81f2b7382dee72602f798b642f14140": {
+      "name": "EICAR-Test-File",
+      "severity": 100,
+      "description": "EICAR standard anti-malware test file (SHA-1)."
+    },
+    "44d88612fea8a8f36de82e1278abb02f": {
+      "name": "EICAR-Test-File",
+      "severity": 100,
+      "description": "EICAR standard anti-malware test file (MD5)."
+    },
+    "131f95c51cc819465fa1797f6ccacf9d494aaaff46fa3eac73ae63ffbdfd8267": {
+      "name": "EICAR-Test-File",
+      "severity": 100,
+      "description": "EICAR standard anti-malware test file with trailing newline."
+    },
+    "69630e4574ec6798239b091cda43dca0": {
+      "name": "EICAR-Test-File",
+      "severity": 100,
+      "description": "EICAR standard anti-malware test file with trailing newline (MD5)."
+    }
+  }
+}

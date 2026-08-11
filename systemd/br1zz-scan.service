@@ -1,0 +1,23 @@
+[Unit]
+Description=Br1zz Security scheduled quick scan
+Documentation=man:br1zz-security(1)
+
+[Service]
+Type=oneshot
+# Refresh signatures before scanning. Prefixed with '-' so a network failure
+# does not cancel the scan - stale signatures still beat no scan at all.
+ExecStartPre=-%h/.local/bin/br1zz-security --no-color update
+# Path is rewritten by install.sh to point at your checkout.
+ExecStart=%h/.local/bin/br1zz-security scan --quick --no-progress --no-color
+
+# A background scan must never compete with interactive work.
+Nice=15
+CPUSchedulingPolicy=idle
+IOSchedulingClass=idle
+
+# The scanner only ever needs to read files and write its own state directory.
+PrivateTmp=false
+NoNewPrivileges=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true

@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Br1zz Security application icon.
+
+    A faceted shield carrying an angular B monogram. Every corner is either
+    square or cut at 45 degrees; the letterform is drawn as explicit paths so
+    rendering never depends on a font being installed.
+
+    Kept in sync with assets/make_icons.py, which renders the same geometry to
+    PNG. The PNGs are what actually get installed, because gdk-pixbuf's SVG
+    loader is not registered on every system.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="body" x1="0.16" y1="0.06" x2="0.47" y2="0.95">
+      <stop offset="0"    stop-color="#4fe3a8"/>
+      <stop offset="0.55" stop-color="#28c08a"/>
+      <stop offset="1"    stop-color="#12866a"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="0.16" y1="0.06" x2="0.63" y2="0.74">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="clip">
+      <path d="M64 6 L110 23 L110 40 L104 48 L102 74 L64 123 L26 74 L24 48 L18 40 L18 23 Z"/>
+    </clipPath>
+  </defs>
+
+  <path d="M64 6 L110 23 L110 40 L104 48 L102 74 L64 123 L26 74 L24 48 L18 40 L18 23 Z"
+        fill="url(#body)"/>
+
+  <g clip-path="url(#clip)">
+    <path d="M64 6 L110 23 L110 50 L18 92 L18 23 Z" fill="url(#sheen)"/>
+  </g>
+
+  <path d="M64 6 L110 23 L110 40 L104 48 L102 74 L64 123 L26 74 L24 48 L18 40 L18 23 Z"
+        fill="none" stroke="#0b5f4c" stroke-opacity="0.55" stroke-width="3"/>
+
+  <!-- angular B: two bowls, chamfered stem corners, counters cut evenodd -->
+  <path fill-rule="evenodd" fill="#ffffff" d="
+    M50 32 L72 32 L80 40 L80 54 L72 62 L44 62 L44 38 Z
+    M56 42 L65 42 L70 47 L70 52 L56 52 Z
+    M44 65 L76 65 L86 75 L86 88 L76 98 L50 98 L44 92 Z
+    M56 75 L71 75 L76 80 L76 88 L56 88 Z"/>
+
+  <g clip-path="url(#clip)">
+    <!-- scan line -->
+    <rect x="16" y="62.2" width="96" height="2.6" fill="#ffffff" fill-opacity="0.5"/>
+    <!-- HUD shoulder brackets -->
+    <g stroke="#ffffff" stroke-opacity="0.30" stroke-width="2.4" fill="none">
+      <path d="M37 30 H28 V39"/>
+      <path d="M91 30 H100 V39"/>
+    </g>
+    <!-- taper ticks -->
+    <g stroke="#ffffff" stroke-opacity="0.22" stroke-width="1.8" fill="none">
+      <path d="M34 78 H40 M34 84 H40 M34 90 H40"/>
+      <path d="M94 78 H88 M94 84 H88 M94 90 H88"/>
+    </g>
+  </g>
+</svg>

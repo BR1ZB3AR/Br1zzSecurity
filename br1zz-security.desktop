@@ -1,0 +1,20 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Br1zz Security
+GenericName=Antivirus Scanner
+Comment=Scan this computer for malware
+Exec=br1zz-security gui
+Icon=br1zz-security
+Terminal=false
+Categories=System;Security;
+Keywords=antivirus;malware;virus;scan;security;realtime;protection;
+StartupNotify=true
+# Ties the running window to this entry so the taskbar, dash and alt-tab show
+# the app's own icon instead of a generic placeholder. Must match WM_CLASS.
+StartupWMClass=br1zz-security
+Actions=scan;
+
+[Desktop Action scan]
+Name=Quick Scan
+Exec=br1zz-security gui --quick

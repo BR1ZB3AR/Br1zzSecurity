@@ -1,0 +1,24 @@
+[Unit]
+Description=Br1zz Security real-time protection
+Documentation=man:br1zz-security(1)
+After=graphical-session.target
+
+[Service]
+Type=simple
+# Path is rewritten by install.sh to point at your checkout.
+ExecStart=%h/.local/bin/br1zz-security --no-color watch
+Restart=on-failure
+RestartSec=10s
+
+# Scanning must never compete with interactive work.
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6
+
+NoNewPrivileges=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=default.target

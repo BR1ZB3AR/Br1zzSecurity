@@ -1,0 +1,15 @@
+[Unit]
+Description=Run a Br1zz Security quick scan daily
+Documentation=man:br1zz-security(1)
+
+[Timer]
+OnCalendar=daily
+# Catch up after the machine has been off.
+Persistent=true
+# Spread the load so the scan does not fire the instant you log in.
+RandomizedDelaySec=30m
+AccuracySec=5m
+Unit=br1zz-scan.service
+
+[Install]
+WantedBy=timers.target
