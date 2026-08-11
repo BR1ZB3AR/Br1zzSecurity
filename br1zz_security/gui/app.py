@@ -71,7 +71,12 @@ class Br1zzApplication(Adw.Application):
                      "Hash signatures, YARA rules, and behavioural heuristics.",
             license_type=Gtk.License.MIT_X11,
             release_notes_version=__version__,
-            release_notes="""<p>Version v2026.08.11.1711 contains the following changes:</p>
+            release_notes="""<p>Version v2026.08.11.1850 contains the following changes:</p>
+<ul>
+  <li>Fixed app launch failure when running/minimized in the background.</li>
+  <li>Fixed system tray indicator icon visibility by resolving absolute path.</li>
+</ul>
+<p>Version v2026.08.11.1711 contains the following changes:</p>
 <ul>
   <li>Updated version schema and changelog list in About dialog to v2026.08.11.1711.</li>
 </ul>
