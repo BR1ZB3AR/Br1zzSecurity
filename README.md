@@ -11,6 +11,22 @@ neutralising quarantine vault, and ships with both a CLI and a GTK4 desktop app.
 It runs entirely as your own user. No daemon, no root, no kernel modules,
 nothing outside `$HOME`.
 
+## Screenshots
+
+### Main Window
+<p align="center">
+  <img src="assets/gui-main.png" alt="Br1zz Security Main GUI" width="700">
+</p>
+
+### Settings & Configuration
+<p align="center">
+  <img src="assets/gui-settings-1.png" alt="Br1zz Security Settings 1" width="700">
+</p>
+
+<p align="center">
+  <img src="assets/gui-settings-2.png" alt="Br1zz Security Settings 2" width="700">
+</p>
+
 ---
 
 ## How detection works
