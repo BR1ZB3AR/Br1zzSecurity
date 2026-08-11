@@ -144,8 +144,8 @@ they just work; put regex-heavy ones in `~/.config/br1zz-security/rules/text/`.
 ## Install
 
 ```bash
-git clone https://github.com/BR1ZB3AR/Br1zzSecurity ~/Br1zz-Security-on-Linux
-cd ~/Br1zz-Security-on-Linux
+git clone https://github.com/BR1ZB3AR/Br1zzSecurity
+cd ~/Br1zzSecurity
 ./install.sh
 ```
 
