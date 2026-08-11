@@ -35,6 +35,7 @@ class Br1zzApplication(Adw.Application):
             self.window.connect("close-request", self._on_close_request)
             self._add_actions()
             self._tray = attach_tray(self)
+        self.window.set_visible(True)
         self.window.present()
         self._kill_tray_helper()
         if self._pending_paths:

@@ -32,10 +32,22 @@ def main():
     except ValueError:
         sys.exit(1)
 
+    # Try to find the absolute path of the icon to ensure it loads
+    icon_path = ICON_NAME
+    for path in [
+        os.path.expanduser("~/.local/share/icons/hicolor/24x24/apps/br1zz-security.png"),
+        os.path.expanduser("~/.local/share/icons/hicolor/48x48/apps/br1zz-security.png"),
+        os.path.expanduser("~/.local/share/icons/hicolor/scalable/apps/br1zz-security.svg"),
+        os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "assets", "br1zz-security.svg"),
+    ]:
+        if os.path.exists(path):
+            icon_path = path
+            break
+
     # Initialize the indicator
     local_icons = os.path.expanduser("~/.local/share/icons")
     indicator = _INDICATOR.Indicator.new(
-        "br1zz-security", ICON_NAME,
+        "br1zz-security", icon_path,
         _INDICATOR.IndicatorCategory.APPLICATION_STATUS,
     )
     indicator.set_icon_theme_path(local_icons)
