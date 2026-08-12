@@ -148,8 +148,21 @@ class RealtimeMonitor:
         self._thread: threading.Thread | None = None
         self._recent: dict[str, float] = {}
         self._lock = threading.Lock()
+        # Resolved exclusion roots, keyed by the exception list they came from.
+        # Recomputing them per event would re-glob the filesystem on every file
+        # write; keying on the list means a newly added exception still takes
+        # effect immediately, without a restart.
+        self._excluded: tuple[tuple[str, ...], list[Path]] = ((), [])
 
     # ------------------------------------------------------------------ paths
+
+    def excluded_roots(self) -> list[Path]:
+        key = tuple(self.config.excludes)
+        cached_key, roots = self._excluded
+        if cached_key != key or not roots:
+            roots = self.scanner._excluded_roots()
+            self._excluded = (key, roots)
+        return roots
 
     def watch_paths(self) -> list[Path]:
         configured = getattr(self.config, "realtime_paths", None) or self.config.quick_paths
@@ -164,11 +177,11 @@ class RealtimeMonitor:
         text = str(path)
         if any(text.startswith(p) for p in PSEUDO_FS):
             return False
-        # Share the scanner's exclusion list, so Br1zz's own installation,
-        # data and quarantine directories are not watched either. Watching
-        # the quarantine vault in particular would re-detect every file the
-        # moment it was isolated.
-        for excluded in self.scanner._excluded_roots():
+        # Share the scanner's exclusion list, so the user's scan exceptions and
+        # Br1zz's own installation, data and quarantine directories are not
+        # watched either. Watching the quarantine vault in particular would
+        # re-detect every file the moment it was isolated.
+        for excluded in self.excluded_roots():
             try:
                 if path == excluded or excluded in path.parents:
                     return False
@@ -225,6 +238,12 @@ class RealtimeMonitor:
             if not path.is_file():
                 return
         except OSError:
+            return
+
+        # Re-checked per file rather than trusted from watch time: a directory
+        # watched before the user added an exception for it is still watched
+        # afterwards, and an excepted file must never be read regardless.
+        if not self._should_watch(path):
             return
 
         verdict = self.scanner.scan_file(path)

@@ -27,6 +27,11 @@ nothing outside `$HOME`.
   <img src="assets/gui-settings-2.png" alt="Br1zz Security Settings 2" width="700">
 </p>
 
+### Scan Exceptions
+<p align="center">
+  <img src="assets/gui-exceptions.png" alt="Br1zz Security Scan Exceptions" width="700">
+</p>
+
 ---
 
 ## How detection works
@@ -380,6 +385,48 @@ fixed.
 The trade-off is honest: malware planted *inside* the installation directory
 would not be scanned. Self-exclusion is standard for antivirus software, and the
 alternative is a permanent flood of self-detections.
+
+## The scan exception list
+
+Anything on the exception list is never walked, never read and never scanned —
+by manual scans and by real-time protection alike. Manage it in
+**Settings → Scan exceptions**:
+
+- **Add Folder…** picks a directory with the file chooser
+- **Add Pattern…** takes a path or a glob, e.g. `~/Projects/*/node_modules`
+- the trash icon on any row removes that exception
+- **Except**, on a detection row in the scan results, adds the flagged file
+  itself — the moment you actually decide something is a false positive
+
+Entries are stored in `excludes` in `config.json`, alongside the shipped
+defaults (`~/.cache`, `/var/log`, `~/.steam`, …).
+
+### What the list does and does not do
+
+An exception suppresses the file, not the rule. The YARA rule or heuristic that
+fired still protects every other file — which is why this is the right tool for
+"this one file is fine" and the wrong one for "this rule is too noisy". Because
+an excepted path is never read at all, no *future* change to it can be detected
+either; excepting a file you do not control is how you build a blind spot.
+
+Two rules keep the list honest:
+
+- **`/` and your home directory are refused.** Both "work", and both silently
+  reduce every later scan to zero files while still reporting success.
+- **Redundant entries are refused.** Adding `/opt/vendor/lib/x.so` when
+  `/opt/vendor` is already excepted is rejected rather than appended, so the
+  list stays short enough to actually audit.
+
+Paths are stored with a leading `~` rather than an expanded home directory, so a
+config file survives being copied to another machine. Globs are re-expanded on
+every scan, so an exception for `~/Projects/*/node_modules` covers projects
+created after it was added.
+
+The exception list applies to real-time protection immediately, without
+restarting it. Exclusion is re-checked per file event rather than trusted from
+the moment a directory was watched — a directory already under watch when you
+add an exception for it stays under watch, so checking only at watch time would
+leave the new exception silently ineffective until the next restart.
 
 ## Quarantine
 

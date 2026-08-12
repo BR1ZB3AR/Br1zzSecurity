@@ -19,7 +19,7 @@ from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
 from .. import __appname__, scanlog  # noqa: E402
 from ..assistant import Explainer, ExplainerError  # noqa: E402
-from ..config import Config  # noqa: E402
+from ..config import GLOB_CHARS, Config, ExceptionError  # noqa: E402
 from ..notify import notify_threat  # noqa: E402
 from ..realtime import RealtimeError, RealtimeMonitor  # noqa: E402
 from ..engine.scanner import Scanner  # noqa: E402
@@ -624,7 +624,127 @@ class Br1zzWindow(Adw.ApplicationWindow):
             paths.add(row)
         page.add(paths)
 
+        self.exceptions_group = Adw.PreferencesGroup(
+            title="Scan exceptions",
+            description="Files and folders that are never scanned, by manual scans "
+                        "or real-time protection. Anything excepted here is not read "
+                        "at all, so nothing inside it can be detected.",
+        )
+        add_buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        folder_button = Gtk.Button(label="Add Folder…")
+        folder_button.connect("clicked", self._on_add_exception_folder)
+        add_buttons.append(folder_button)
+        pattern_button = Gtk.Button(label="Add Pattern…")
+        pattern_button.connect("clicked", self._on_add_exception_pattern)
+        add_buttons.append(pattern_button)
+        self.exceptions_group.set_header_suffix(add_buttons)
+
+        self._exception_rows: list[Gtk.Widget] = []
+        page.add(self.exceptions_group)
+        self._refresh_exceptions()
+
         return page
+
+    # ---------------------------------------------------------- exceptions
+
+    def _refresh_exceptions(self) -> None:
+        """Rebuild the exception list from the config."""
+        for row in self._exception_rows:
+            self.exceptions_group.remove(row)
+        self._exception_rows.clear()
+
+        if not self.config.excludes:
+            empty = Adw.ActionRow(
+                title="No exceptions",
+                subtitle="Everything in a scanned location is checked.",
+            )
+            empty.add_css_class("dim-label")
+            self.exceptions_group.add(empty)
+            self._exception_rows.append(empty)
+            return
+
+        for entry in list(self.config.excludes):
+            row = Adw.ActionRow(
+                title=GLib.markup_escape_text(entry),
+                subtitle=self._exception_subtitle(entry),
+            )
+            row.add_css_class("mono")
+            remove = Gtk.Button(
+                icon_name="user-trash-symbolic",
+                tooltip_text=f"Remove the exception for {entry}",
+                valign=Gtk.Align.CENTER,
+            )
+            remove.add_css_class("flat")
+            remove.connect("clicked", self._on_remove_exception, entry)
+            row.add_suffix(remove)
+            self.exceptions_group.add(row)
+            self._exception_rows.append(row)
+
+    def _exception_subtitle(self, entry: str) -> str:
+        """Describe what an exception currently covers.
+
+        A pattern matching nothing and a folder that does not exist are both
+        harmless, but they look identical to a working entry without this.
+        """
+        if any(ch in entry for ch in GLOB_CHARS):
+            matches = len(self.config.expand_exception(entry))
+            return f"pattern · matches {matches} path(s) right now"
+        expanded = Path(entry).expanduser()
+        if not expanded.exists():
+            return "not present — applies if it is created later"
+        return "folder" if expanded.is_dir() else "file"
+
+    def _on_add_exception_folder(self, _button) -> None:
+        dialog = Gtk.FileDialog(title="Choose a folder to except from scanning")
+        dialog.select_folder(self, None, self._on_exception_folder_selected)
+
+    def _on_exception_folder_selected(self, dialog, result) -> None:
+        try:
+            folder = dialog.select_folder_finish(result)
+        except GLib.Error:
+            return  # user dismissed the chooser
+        if folder is not None and folder.get_path():
+            self._add_exception(folder.get_path())
+
+    def _on_add_exception_pattern(self, _button) -> None:
+        dialog = Adw.MessageDialog(
+            transient_for=self,
+            heading="Add a scan exception",
+            body="Enter an absolute path to a file or folder, or a glob pattern "
+                 "such as ~/Projects/*/node_modules. Use ~ for your home directory.",
+        )
+        entry = Gtk.Entry(placeholder_text="~/Projects/*/node_modules", activates_default=True)
+        dialog.set_extra_child(entry)
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("add", "Add Exception")
+        dialog.set_response_appearance("add", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("add")
+        dialog.set_close_response("cancel")
+        dialog.connect("response", self._on_exception_pattern_response, entry)
+        dialog.present()
+
+    def _on_exception_pattern_response(self, _dialog, response: str, entry: Gtk.Entry) -> None:
+        if response == "add":
+            self._add_exception(entry.get_text())
+
+    def _add_exception(self, raw: str) -> bool:
+        """Store one exception and report the outcome. Returns True if added."""
+        try:
+            stored = self.config.add_exception(raw)
+        except ExceptionError as exc:
+            self._toast(str(exc))
+            return False
+        self.config.save()
+        self._refresh_exceptions()
+        self._toast(f"Exception added — {stored} will be skipped.")
+        return True
+
+    def _on_remove_exception(self, _button, entry: str) -> None:
+        if not self.config.remove_exception(entry):
+            return
+        self.config.save()
+        self._refresh_exceptions()
+        self._toast(f"Exception removed — {entry} will be scanned again.")
 
     def _on_setting_changed(self, row, _param, field: str) -> None:
         setattr(self.config, field, row.get_active())
@@ -922,6 +1042,14 @@ class Br1zzWindow(Adw.ApplicationWindow):
         explain.connect("clicked", self._on_explain, verdict)
         actions.append(explain)
 
+        except_button = Gtk.Button(
+            label="Except",
+            tooltip_text="Treat this as a false positive and never scan it again",
+        )
+        except_button.add_css_class("flat")
+        except_button.connect("clicked", self._on_except_threat, verdict, row)
+        actions.append(except_button)
+
         button = Gtk.Button(label="Quarantine")
         if infected:
             button.add_css_class("destructive-action")
@@ -1018,6 +1146,46 @@ class Br1zzWindow(Adw.ApplicationWindow):
 
     def _on_explain(self, _button, verdict: FileVerdict) -> None:
         ExplanationDialog(self, verdict, self.config).present()
+
+    def _on_except_threat(self, button, verdict: FileVerdict, row) -> None:
+        """Offer to add the flagged file to the exception list.
+
+        Confirmed rather than immediate: this button sits next to Quarantine
+        and does the opposite thing permanently, so a misclick must not be
+        enough to stop a real detection being reported ever again.
+        """
+        path = str(verdict.path)
+        covering = self.config.exception_for(path)
+        if covering is not None:
+            self._toast(f"Already covered by the exception '{covering}'.")
+            return
+
+        dialog = Adw.MessageDialog(
+            transient_for=self,
+            heading="Never scan this file again?",
+            body=f"{path}\n\nBr1zz Security reported this as "
+                 f"{'infected' if verdict.status is Status.INFECTED else 'suspicious'} "
+                 f"({verdict.name}). Adding an exception means the file is skipped "
+                 f"entirely from now on — it will not be read, and no future change "
+                 f"to it will be detected. Only do this if you are sure it is safe.",
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("add", "Add Exception")
+        dialog.set_response_appearance("add", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_close_response("cancel")
+        dialog.connect("response", self._on_except_threat_response, verdict, button, row)
+        dialog.present()
+
+    def _on_except_threat_response(self, _dialog, response: str, verdict: FileVerdict,
+                                   button, row) -> None:
+        if response != "add" or not self._add_exception(str(verdict.path)):
+            return
+        # The result stays on screen: this scan did find the file, and hiding
+        # the row would make it unclear what the exception was just applied to.
+        button.set_sensitive(False)
+        button.set_label("Excepted")
+        row.set_subtitle(f"{verdict.path.parent} · excepted from future scans")
+        row.add_css_class("dim-label")
 
     def _on_quarantine_one(self, button, verdict: FileVerdict, row) -> None:
         try:

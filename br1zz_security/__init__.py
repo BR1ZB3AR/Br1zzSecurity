@@ -1,6 +1,6 @@
 """Br1zz Security - an on-demand antivirus system for Linux."""
 
-__version__ = "v2026.08.11.1850"
+__version__ = "v2026.08.11.1920"
 __appname__ = "Br1zz Security"
 
 from .engine.verdict import Detection, FileVerdict, Severity, Status

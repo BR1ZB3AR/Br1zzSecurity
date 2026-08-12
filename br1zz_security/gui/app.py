@@ -71,7 +71,14 @@ class Br1zzApplication(Adw.Application):
                      "Hash signatures, YARA rules, and behavioural heuristics.",
             license_type=Gtk.License.MIT_X11,
             release_notes_version=__version__,
-            release_notes="""<p>Version v2026.08.11.1850 contains the following changes:</p>
+            release_notes="""<p>Version v2026.08.11.1920 contains the following changes:</p>
+<ul>
+  <li>Added a scan exception list — files, folders and glob patterns that are never scanned.</li>
+  <li>Added Settings &gt; Scan exceptions to add, review and remove exceptions.</li>
+  <li>Added an Except button to each detection, for marking a file as a false positive.</li>
+  <li>Scan exceptions now apply to real-time protection immediately, without restarting it.</li>
+</ul>
+<p>Version v2026.08.11.1850 contains the following changes:</p>
 <ul>
   <li>Fixed app launch failure when running/minimized in the background.</li>
   <li>Fixed system tray indicator icon visibility by resolving absolute path.</li>

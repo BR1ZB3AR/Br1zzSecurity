@@ -76,6 +76,55 @@ DEFAULT_EXCLUDES = [
     "/var/lib/docker", "/var/cache", "/var/log",
 ]
 
+# Glob metacharacters. An entry containing any of these is expanded against the
+# filesystem at scan time rather than being treated as one literal path.
+GLOB_CHARS = "*?["
+
+
+class ExceptionError(ValueError):
+    """A scan exception that cannot be stored as written."""
+
+
+def normalize_exception(raw: str) -> str:
+    """Return the canonical stored form of one scan exception.
+
+    Exceptions are kept with a leading `~` rather than an expanded home
+    directory, so a config file stays valid if it is copied to another machine
+    or the account is renamed. Redundant separators and trailing slashes are
+    collapsed, so that the same directory written two ways is recognised as one
+    entry instead of accumulating duplicates.
+
+    Raises ExceptionError for input that cannot be stored safely.
+    """
+    entry = (raw or "").strip()
+    if not entry:
+        raise ExceptionError("An exception cannot be empty.")
+
+    home = str(Path.home())
+    if entry == home:
+        entry = "~"
+    elif entry.startswith(home + os.sep):
+        entry = "~" + entry[len(home):]
+
+    if not entry.startswith(("~", os.sep)):
+        raise ExceptionError(
+            f"'{raw}' is not an absolute path. An exception must start with / or ~."
+        )
+
+    # Path() collapses '//', '/./' and trailing slashes without touching the
+    # filesystem, which matters: an exception may be a glob, or may name a path
+    # that does not exist yet.
+    entry = str(Path(entry))
+
+    # Excepting a whole root is almost never what someone means, and it fails
+    # silently - every later scan reports zero files and looks like it worked.
+    if entry in ("/", "~", home):
+        raise ExceptionError(
+            "Excepting the whole filesystem or your entire home directory would "
+            "leave nothing to scan. Except a specific folder instead."
+        )
+    return entry
+
 
 @dataclass
 class Config:
@@ -98,6 +147,9 @@ class Config:
     workers: int = min(8, (os.cpu_count() or 4))
 
     quick_paths: list[str] = field(default_factory=lambda: list(QUICK_SCAN_PATHS))
+    # The scan exception list. Paths and glob patterns that are never walked,
+    # never read and never scanned - by manual scans and by real-time
+    # protection alike. Managed from Settings > Scan exceptions in the GUI.
     excludes: list[str] = field(default_factory=lambda: list(DEFAULT_EXCLUDES))
 
     enable_yara: bool = True
@@ -157,21 +209,75 @@ class Config:
         path.write_text(json.dumps(asdict(self), indent=2) + "\n")
         return path
 
+    # ------------------------------------------------------ scan exceptions
+
+    def expand_exception(self, item: str) -> list[Path]:
+        """Resolve one stored exception to the concrete paths it covers.
+
+        A literal entry yields itself whether or not it exists - an exception
+        for a folder that has not been created yet must still apply once it is.
+        A glob yields only what it currently matches, so it is re-expanded on
+        every scan rather than cached.
+        """
+        expanded = Path(item).expanduser()
+        if not any(ch in item for ch in GLOB_CHARS):
+            return [expanded]
+        # Glob patterns are resolved against / or ~ as appropriate.
+        root = Path.home() if item.startswith("~") else Path("/")
+        pattern = str(expanded.relative_to(root)) if expanded.is_absolute() else item
+        try:
+            return list(root.glob(pattern))
+        except (ValueError, OSError):
+            return []
+
     def expanded_excludes(self) -> list[Path]:
         out: list[Path] = []
         for item in self.excludes:
-            expanded = Path(item).expanduser()
-            if any(ch in item for ch in "*?["):
-                # Glob patterns are resolved against / or ~ as appropriate.
-                root = Path.home() if item.startswith("~") else Path("/")
-                pattern = str(expanded.relative_to(root)) if expanded.is_absolute() else item
-                try:
-                    out.extend(root.glob(pattern))
-                except (ValueError, OSError):
-                    continue
-            else:
-                out.append(expanded)
+            out.extend(self.expand_exception(item))
         return out
+
+    def exception_for(self, path: Path | str) -> str | None:
+        """The stored exception already covering `path`, or None.
+
+        Lets the UI say "already excepted" instead of silently appending a
+        redundant entry every time the same file is excepted from a threat row.
+        """
+        try:
+            target = Path(path).expanduser().resolve()
+        except OSError:
+            return None
+        for item in self.excludes:
+            for candidate in self.expand_exception(item):
+                try:
+                    root = candidate.resolve()
+                except OSError:
+                    continue
+                if target == root or root in target.parents:
+                    return item
+        return None
+
+    def add_exception(self, raw: str) -> str:
+        """Add one path or glob to the exception list and return its stored form.
+
+        Does not save; the caller decides when to persist. Raises
+        ExceptionError if the entry is unusable or already covered.
+        """
+        entry = normalize_exception(raw)
+        if entry in self.excludes:
+            raise ExceptionError(f"'{entry}' is already in the exception list.")
+        covering = self.exception_for(entry)
+        if covering is not None:
+            raise ExceptionError(f"Already covered by the existing exception '{covering}'.")
+        self.excludes.append(entry)
+        return entry
+
+    def remove_exception(self, entry: str) -> bool:
+        """Drop one exception. Returns False if it was not in the list."""
+        try:
+            self.excludes.remove(entry)
+        except ValueError:
+            return False
+        return True
 
     def expanded_quick_paths(self) -> list[Path]:
         return [p for p in (Path(q).expanduser() for q in self.quick_paths) if p.exists()]

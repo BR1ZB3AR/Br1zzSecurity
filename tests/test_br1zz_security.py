@@ -25,7 +25,8 @@ os.environ["XDG_CONFIG_HOME"] = str(Path(_SANDBOX, "config"))
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from br1zz_security.config import Config, PACKAGE_DIR, QUARANTINE_DIR, ensure_dirs  # noqa: E402
+from br1zz_security.config import (Config, ExceptionError, PACKAGE_DIR,  # noqa: E402
+                                   QUARANTINE_DIR, ensure_dirs, normalize_exception)
 from br1zz_security.engine.hashdb import HashDatabase, hash_bytes, hash_file  # noqa: E402
 from br1zz_security.engine.heuristics import ElfInfo, Heuristics, is_text, shannon_entropy  # noqa: E402
 from br1zz_security.engine.scanner import Scanner  # noqa: E402
@@ -334,6 +335,31 @@ class ScannerTraversalTests(TempDirTest):
         self.scanner.config.excludes = [str(self.tmp / "skip")]
         found = {p.name for p in self.scanner.enumerate([self.tmp])}
         self.assertEqual(found, {"keep.txt"})
+
+    def test_exception_added_at_runtime_is_honoured(self):
+        self.write("keep.txt", "x")
+        self.write("skip/ignored.txt", "y")
+        self.scanner.config.excludes = []
+        self.scanner.config.add_exception(str(self.tmp / "skip"))
+        found = {p.name for p in self.scanner.enumerate([self.tmp])}
+        self.assertEqual(found, {"keep.txt"})
+
+    def test_exception_glob_is_honoured(self):
+        self.write("keep.txt", "x")
+        self.write("a/node_modules/dep.js", "y")
+        self.write("b/node_modules/dep.js", "z")
+        self.scanner.config.excludes = [str(self.tmp / "*" / "node_modules")]
+        found = {p.name for p in self.scanner.enumerate([self.tmp])}
+        self.assertEqual(found, {"keep.txt"})
+
+    def test_excepted_file_is_not_scanned(self):
+        # The point of a file-level exception: a known false positive stops
+        # being reported without disabling the rule that caught it.
+        sample = self.write("sample.txt", EICAR)
+        self.assertTrue(any(p == sample for p in self.scanner.enumerate([self.tmp])))
+        self.scanner.config.add_exception(str(sample))
+        found = list(self.scanner.enumerate([self.tmp]))
+        self.assertEqual(found, [])
 
     def test_package_directory_is_never_scanned(self):
         # The rules and signature files are full of malware patterns by design.
@@ -751,9 +777,9 @@ class RealtimeTests(TempDirTest):
         self.monitor.start()
         self.addCleanup(self.monitor.stop)
 
-    def wait_for(self, count: int) -> bool:
+    def wait_for(self, count: int, timeout: float | None = None) -> bool:
         import time
-        deadline = time.monotonic() + self.TIMEOUT
+        deadline = time.monotonic() + (self.TIMEOUT if timeout is None else timeout)
         while time.monotonic() < deadline:
             if len(self.found) >= count:
                 return True
@@ -792,6 +818,20 @@ class RealtimeTests(TempDirTest):
         (nested / "deep.sh").write_text(REVERSE_SHELL)
         self.assertTrue(self.wait_for(1), "file in a new subdirectory was missed")
         self.assertEqual(self.found[0].path.name, "deep.sh")
+
+    def test_exception_added_while_running_takes_effect(self):
+        # The directory is already watched by the time the exception is added,
+        # so this only passes if exclusion is re-checked per file rather than
+        # trusted from watch time.
+        skipped = self.tmp / "vendor"
+        skipped.mkdir()
+        self.start()
+        self.config.add_exception(str(skipped))
+        (skipped / "eicar.com").write_text(EICAR)
+        # A shorter wait than the positive cases on purpose: this one has to
+        # burn its whole timeout every run, and detection normally lands in
+        # well under a second.
+        self.assertFalse(self.wait_for(1, timeout=2.0), "an excepted file was scanned anyway")
 
     def test_auto_quarantine_isolates_infected(self):
         ensure_dirs()
@@ -1324,6 +1364,79 @@ class ConfigTests(unittest.TestCase):
     def test_quick_paths_expand(self):
         for path in Config().expanded_quick_paths():
             self.assertTrue(path.is_absolute())
+
+
+class ScanExceptionTests(unittest.TestCase):
+    def setUp(self):
+        self.config = Config()
+        self.config.excludes = []
+
+    # ------------------------------------------------------------ normalising
+
+    def test_home_is_stored_portably(self):
+        # Stored with ~ so the config survives being copied to another machine.
+        entry = normalize_exception(str(Path.home() / "Downloads"))
+        self.assertEqual(entry, "~/Downloads")
+
+    def test_trailing_and_duplicate_slashes_are_collapsed(self):
+        self.assertEqual(normalize_exception("/var//tmp/"), "/var/tmp")
+        self.assertEqual(normalize_exception("~/Downloads/"), "~/Downloads")
+
+    def test_globs_are_preserved(self):
+        self.assertEqual(
+            normalize_exception("~/Projects/*/node_modules"),
+            "~/Projects/*/node_modules",
+        )
+
+    def test_empty_and_relative_entries_are_rejected(self):
+        for bad in ("", "   ", "Downloads", "./relative"):
+            with self.assertRaises(ExceptionError):
+                normalize_exception(bad)
+
+    def test_whole_filesystem_and_home_are_rejected(self):
+        # Both "work" and silently reduce every later scan to zero files.
+        for bad in ("/", "~", str(Path.home()), "~/"):
+            with self.assertRaises(ExceptionError):
+                normalize_exception(bad)
+
+    # ------------------------------------------------------------- managing
+
+    def test_add_and_remove(self):
+        self.assertEqual(self.config.add_exception("/opt/vendor/"), "/opt/vendor")
+        self.assertEqual(self.config.excludes, ["/opt/vendor"])
+        self.assertTrue(self.config.remove_exception("/opt/vendor"))
+        self.assertEqual(self.config.excludes, [])
+
+    def test_removing_an_absent_entry_reports_failure(self):
+        self.assertFalse(self.config.remove_exception("/opt/nothing"))
+
+    def test_duplicates_are_rejected_however_they_are_written(self):
+        self.config.add_exception("/opt/vendor")
+        with self.assertRaises(ExceptionError):
+            self.config.add_exception("/opt/vendor/")
+        self.assertEqual(self.config.excludes, ["/opt/vendor"])
+
+    def test_entry_already_covered_by_a_parent_is_rejected(self):
+        self.config.add_exception("/opt/vendor")
+        with self.assertRaises(ExceptionError):
+            self.config.add_exception("/opt/vendor/lib/thing.so")
+        self.assertEqual(self.config.excludes, ["/opt/vendor"])
+
+    def test_exception_for_matches_children(self):
+        self.config.add_exception("/opt/vendor")
+        self.assertEqual(self.config.exception_for("/opt/vendor/lib/x.so"), "/opt/vendor")
+        self.assertEqual(self.config.exception_for("/opt/vendor"), "/opt/vendor")
+        self.assertIsNone(self.config.exception_for("/opt/other/x.so"))
+
+    def test_exception_list_survives_a_save_and_load(self):
+        self.config.add_exception("/opt/vendor")
+        self.config.add_exception("~/Projects/*/node_modules")
+        path = Path(_SANDBOX, "exceptions.json")
+        self.config.save(path)
+        self.assertEqual(
+            Config.load(path).excludes,
+            ["/opt/vendor", "~/Projects/*/node_modules"],
+        )
 
 
 class ScanLogTests(TempDirTest):
